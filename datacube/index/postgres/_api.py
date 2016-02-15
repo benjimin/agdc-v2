@@ -10,6 +10,7 @@ import datetime
 import json
 import logging
 from functools import reduce as reduce_
+from itertools import chain
 
 import numpy
 from sqlalchemy import create_engine, select, text, bindparam, exists, and_, or_, Index, func
@@ -366,11 +367,16 @@ class PostgresDb(object):
             for f in select_fields
             ] if select_fields else _DATASET_SELECT_FIELDS
 
-        return self._search_docs(
-            expressions,
-            primary_table=DATASET,
-            select_fields=select_fields,
+        from_expression = DATASET.join(COLLECTION)
+        raw_expressions = field_expressions_to_sql(expressions)
+        metadata_type_id = metadata_type_id_from_expressions(expressions)
+        if metadata_type_id:
+            raw_expressions = [DATASET.c.metadata_type_ref == metadata_type_id] + raw_expressions
+        results = self._connection.execute(
+            select(select_fields).select_from(from_expression).where(and_(*raw_expressions))
         )
+        for result in results:
+            yield result
 
     def search_storage_units(self, expressions, select_fields=None):
         """
@@ -378,30 +384,17 @@ class PostgresDb(object):
         :type expressions: tuple[datacube.index.postgres._fields.PgExpression]
         :rtype: dict
         """
-        select_fields = [
-            f.alchemy_expression.label(f.name)
-            for f in select_fields
-            ] if select_fields else [STORAGE_UNIT]
+        select_fields = [f.alchemy_expression.label(f.name) for f in select_fields] if select_fields else [STORAGE_UNIT]
 
-        return self._search_docs(
-            expressions,
-            primary_table=STORAGE_UNIT,
-            select_fields=select_fields
-        )
-
-    def _search_docs(self, expressions, primary_table, select_fields=None):
-        """
-
-        :type expressions: tuple[datacube.index.postgres._fields.PgExpression]
-        :param primary_table: SQLAlchemy table
-        :return:
-        """
-        from_expression, raw_expressions = _prepare_expressions(expressions, primary_table)
-
+        # select_fields = [func.array_agg(DATASET.c.id).label('dataset_ids')] + select_fields
+        from_expression = STORAGE_UNIT.join(DATASET_STORAGE).join(DATASET).join(COLLECTION)
+        raw_expressions = field_expressions_to_sql(expressions)
+        metadata_type_id = metadata_type_id_from_expressions(expressions)
+        if metadata_type_id:
+            raw_expressions = [STORAGE_UNIT.c.metadata_type_ref == metadata_type_id,
+                               DATASET.c.metadata_type_ref == metadata_type_id] + raw_expressions
         results = self._connection.execute(
-            select(select_fields).select_from(from_expression).where(
-                and_(*raw_expressions)
-            )
+            select(select_fields).select_from(from_expression).where(and_(*raw_expressions)).group_by(STORAGE_UNIT.c.id)
         )
         for result in results:
             yield result
@@ -549,66 +542,38 @@ def _setup_collection_fields(conn, collection_prefix, doc_prefix, fields, where_
         )
 
 
-_JOIN_REQUIREMENTS = {
-    # To join dataset to storage unit, use this table.
-    (DATASET, STORAGE_UNIT): DATASET_STORAGE,
-    (STORAGE_UNIT, DATASET): DATASET_STORAGE
-}
-
-
-def _prepare_expressions(expressions, primary_table):
-    """
-    :type expressions: tuple[datacube.index.postgres._fields.PgExpression]
-    :param primary_table: SQLAlchemy table
-    """
-    # We currently only allow one metadata to be queried at a time (our indexes are per-type)
-    metadata_type_references = set()
-    join_tables = set()
-
-    def tables_referenced(expression):
-        if isinstance(expression, OrExpression):
-            return reduce_(lambda a, b: a | b, (tables_referenced(expr) for expr in expression.exprs), set())
-
-        #: :type: datacube.index.postgres._fields.PgField
-        field = expression.field
-        table = field.alchemy_column.table
-        metadata_type_id = field.metadata_type_id
-        return {(table, metadata_type_id)}
-
-    for table, metadata_type_id in reduce_(lambda a, b: a | b, (tables_referenced(expr) for expr in expressions),
-                                           set()):
-        if table != primary_table:
-            join_tables.add(table)
-        if metadata_type_id:
-            metadata_type_references.add((table, metadata_type_id))
-
-    unique_metadata_types = set([c[1] for c in metadata_type_references])
-    if len(unique_metadata_types) > 1:
-        raise ValueError(
-            'Currently only one metadata type can be queried at a time. (Tried %r)' % metadata_type_references
-        )
-
+def field_expressions_to_sql(expressions):
     def raw_expr(expression):
         if isinstance(expression, OrExpression):
             return or_(raw_expr(expr) for expr in expression.exprs)
         return expression.alchemy_expression
 
-    raw_expressions = [raw_expr(expression) for expression in expressions]
+    return [raw_expr(expression) for expression in expressions]
 
-    # We may have multiple references: storage.metadata_type_ref and dataset.metadata_type_ref.
-    # We want to include all, to ensure the indexes are used.
-    for from_table, queried_metadata_type in metadata_type_references:
-        raw_expressions.insert(0, from_table.c.metadata_type_ref == queried_metadata_type)
 
-    from_expression = primary_table
-    for table in join_tables:
-        # Do we need any middle-men tables to join our tables?
-        join_requirement = _JOIN_REQUIREMENTS.get((primary_table, table), None)
-        if join_requirement is not None:
-            from_expression = from_expression.join(join_requirement)
-        from_expression = from_expression.join(table)
+def fielditer(expression):
+    if isinstance(expression, OrExpression):
+        for expr in expression.exprs:
+            for field in fielditer(expr):
+                yield field
+    else:
+        yield expression.field
 
-    return from_expression, raw_expressions
+
+def metadata_type_id_from_expressions(expressions):
+    metadata_type_references = set()
+    for field in chain(*[fielditer(expr) for expr in expressions]):
+        if field.metadata_type_id is not None:
+            metadata_type_references.add(field.metadata_type_id)
+
+    if len(metadata_type_references) == 0:
+        return None
+    elif len(metadata_type_references) == 1:
+        return metadata_type_references.pop()
+    else:
+        raise ValueError(
+            'Currently only one metadata type can be queried at a time. (Tried %r)' % metadata_type_references
+        )
 
 
 def _to_json(o):

@@ -302,6 +302,40 @@ def test_search_storage_by_dataset(index, db, default_collection, indexed_ls5_nb
     assert len(storages) == 0
 
 
+def test_search_storage_by_collection(index, db, default_collection, indexed_ls5_nbar_storage_type):
+    """
+    :type db: datacube.index.postgres._api.PostgresDb
+    :type index: datacube.index._api.Index
+    :type indexed_ls5_nbar_storage_type: datacube.model.StorageType
+    :type default_collection: datacube.model.Collection
+    """
+    was_inserted = db.insert_dataset(
+        _telemetry_dataset,
+        _telemetry_uuid
+    )
+    assert was_inserted
+
+    unit_id = db.add_storage_unit(
+        '/tmp/something.tif',
+        [_telemetry_uuid],
+        {'test': 'test'},
+        indexed_ls5_nbar_storage_type.id_
+    )
+
+    # Search by the linked dataset properties.
+    storages = index.storage.search_eager(
+        collection="zzz ZZZZ"
+    )
+    assert len(storages) == 0
+
+    # Search by the linked dataset properties.
+    storages = index.storage.search_eager(
+        collection=default_collection.name
+    )
+    assert len(storages) == 1
+    assert storages[0].id_ == unit_id
+
+
 def test_search_cli_basic(global_integration_cli_args, db, default_collection):
     """
     Search datasets using the cli.
