@@ -7,8 +7,8 @@ from __future__ import absolute_import, division, print_function
 import logging
 from collections import defaultdict
 from contextlib import contextmanager
-from itertools import groupby
 from datetime import datetime
+from itertools import groupby
 
 import yaml
 
@@ -25,22 +25,14 @@ from rasterio.coords import BoundingBox
 from rasterio.warp import RESAMPLING, transform_bounds
 
 from datacube import compat
-from datacube.model import StorageUnit, GeoBox, Variable, _uri_to_local_path, time_coordinate_value
+from datacube.model import StorageUnit, GeoBox, Variable, _uri_to_local_path, time_coordinate_value, \
+    VariableWithSource, Measurement
 from datacube.storage import netcdf_writer
 from datacube.utils import namedtuples2dicts, attrs_all_equal
 from datacube.storage.access.core import StorageUnitBase, StorageUnitDimensionProxy, StorageUnitStack
 from datacube.storage.access.backends import NetCDF4StorageUnit, GeoTifStorageUnit
 
 _LOG = logging.getLogger(__name__)
-
-RESAMPLING_METHODS = {
-    'nearest': RESAMPLING.nearest,
-    'cubic': RESAMPLING.cubic,
-    'bilinear': RESAMPLING.bilinear,
-    'cubic_spline': RESAMPLING.cubic_spline,
-    'lanczos': RESAMPLING.lanczos,
-    'average': RESAMPLING.average,
-}
 
 
 def tile_datasets_with_storage_type(datasets, storage_type):
@@ -108,27 +100,30 @@ def _poly_from_bounds(left, bottom, right, top, segments=None):
 
 
 class WarpingStorageUnit(StorageUnitBase):
-    def __init__(self, datasets, geobox, mapping, fuse_func=None):
+    def __init__(self, datasets, geobox, measurements, fuse_func=None):
         if not datasets:
             raise ValueError('Shall not make empty StorageUnit')
 
         self._datasets = datasets
         self.geobox = geobox
-        self._varmap = {attrs['varname']: name for name, attrs in mapping.items()}
-        self._mapping = mapping
+        # Map of Storage Variable Name -> Source Dataset Variable Name
+        self._src_var_names = {name: var.src_varname for name, var in measurements.items()}
+
         self._fuse_func = fuse_func
 
         self.coord_data = self.geobox.coordinate_labels
         self.coordinates = self.geobox.coordinates
 
-        self.variables = {
-            attrs['varname']: Variable(numpy.dtype(attrs['dtype']),
-                                       attrs.get('nodata', None),
-                                       self.geobox.dimensions,
-                                       attrs.get('units', '1'))
-            for name, attrs in mapping.items()
-            }
-        self.variables['extra_metadata'] = Variable(numpy.dtype('S30000'), None, tuple(), None)
+        # Dict of Storage Variable Name -> Variable
+        # Should be the same as measurements, with added geobox
+        self.variables = {}
+        for name, measurement in measurements.items():
+            measurement.dimensions = self.geobox.dimensions
+            self.variables[name] = measurement
+
+        self.variables['extra_metadata'] = Measurement(name='extra_metadata',
+                                                       settings=dict(dtype='S30000',
+                                                                     units=None))
 
     @property
     def crs(self):
@@ -147,30 +142,31 @@ class WarpingStorageUnit(StorageUnitBase):
 
     def _fill_data(self, name, index, dest):
         if name == 'extra_metadata':
-            docs = yaml.dump_all([doc.metadata_doc for doc in self._datasets], Dumper=SafeDumper, encoding='utf-8')
+            docs = yaml.dump_all([doc.metadata_doc for doc in self._datasets],
+                                 Dumper=SafeDumper, encoding='utf-8')
             numpy.copyto(dest, docs)
         else:
-            measurement_id = self._varmap[name]
-            resampling = RESAMPLING_METHODS[self._mapping[measurement_id]['resampling_method']]
-            sources = [DatasetSource(dataset, measurement_id) for dataset in self._datasets]
+            src_var_name = self._src_var_names[name]
+
+            sources = [DatasetSource(dataset, src_var_name) for dataset in self._datasets]
             fuse_sources(sources,
                          dest,
-                         self.geobox[index].affine,  # NOTE: Overloaded GeoBox.__getitem__
-                         self.geobox.crs_str,
-                         self.variables[name].nodata,
-                         resampling=resampling,
+                         dst_transform=self.geobox[index].affine,  # NOTE: Overloaded
+                         # GeoBox.__getitem__
+                         dst_projection=self.geobox.crs_str,
+                         dst_nodata=self.variables[name].nodata,
+                         resampling=self.variables[name].rio_resampling_method,
                          fuse_func=self._fuse_func)
         return dest
 
 
-# TODO: global_attributes and variable_attributes should be members of access_unit
-def write_access_unit_to_netcdf(access_unit, global_attributes, variable_attributes, variable_params, filename):
+# TODO: global_attributes and variables should be members of access_unit
+def write_access_unit_to_netcdf(access_unit, global_attributes, variables, filename):
     """
     Write access.StorageUnit to NetCDF4.
     :param access_unit:
     :param global_attributes: key value pairs to write as global attributes
-    :param variable_attributes: mapping of variable name to key-value pairs
-    :param variable_params: mapping of variable name to netcdf variable creation params
+    :param variables: mapping of variable name to model.Measurement object
     :param filename: output filename
     :return:
 
@@ -186,12 +182,12 @@ def write_access_unit_to_netcdf(access_unit, global_attributes, variable_attribu
     netcdf_writer.write_geographical_extents_attributes(nco, access_unit.extent.to_crs('EPSG:4326').points)
 
     for name, variable in access_unit.variables.items():
-        var_params = variable_params.get(name, {})
+        var_params = variable.parameters
         data_var = netcdf_writer.create_variable(nco, name, variable, **var_params)
         data_var[:] = netcdf_writer.netcdfy_data(access_unit.get(name).values)
 
         # write extra attributes
-        for key, value in variable_attributes.get(name, {}).items():
+        for key, value in variable.attributes.items():
             netcdf_writer.write_attribute(data_var, key, value)
 
     # write global atrributes
@@ -229,17 +225,19 @@ def create_storage_unit_from_datasets(tile_index, datasets, storage_type, output
     datasets_grouped_by_time = _group_datasets_by_time(datasets)
     geobox = GeoBox.from_storage_type(storage_type, tile_index)
 
-    storage_units = [StorageUnitDimensionProxy(
-        WarpingStorageUnit(group, geobox, mapping=storage_type.measurements),
-        time_coordinate_value(time))
-                     for time, group in datasets_grouped_by_time]
+    storage_units = [
+        StorageUnitDimensionProxy(
+            WarpingStorageUnit(
+                group, geobox, measurements=storage_type.measurements),
+            time_coordinate_value(time)
+        )
+        for time, group in datasets_grouped_by_time]
     access_unit = StorageUnitStack(storage_units=storage_units, stack_dim='time')
 
     write_access_unit_to_netcdf(access_unit,
                                 storage_type.global_attributes,
-                                storage_type.variable_attributes,
-                                storage_type.variable_params,
-                                str(_uri_to_local_path(output_uri)))
+                                variables=access_unit.variables,
+                                filename=str(_uri_to_local_path(output_uri)))
 
     descriptor = _accesss_unit_descriptor(access_unit, tile_index=tile_index)
     return StorageUnit([dataset.id for dataset in datasets],
@@ -261,7 +259,7 @@ def storage_unit_to_access_unit(storage_unit):
             dimensions=storage_unit.storage_type.dimensions,
             units=attributes.get('units', None))
         for attributes in storage_unit.storage_type.measurements.values()
-    }
+        }
     if storage_unit.storage_type.driver == 'NetCDF CF':
         variables['extra_metadata'] = Variable(numpy.dtype('S30000'), None, ('time',), None)
         return NetCDF4StorageUnit(storage_unit.local_path, coordinates=coordinates, variables=variables)
@@ -295,9 +293,8 @@ def stack_storage_units(storage_units, output_uri):
 
     write_access_unit_to_netcdf(access_unit,
                                 storage_type.global_attributes,
-                                storage_type.variable_attributes,
-                                storage_type.variable_params,
-                                str(_uri_to_local_path(output_uri)))
+                                variables=dict(storage_type.measurements),
+                                filename=str(_uri_to_local_path(output_uri)))
 
     descriptor = _accesss_unit_descriptor(access_unit, tile_index=tile_index)
     return StorageUnit([id_ for su in storage_units for id_ in su.dataset_ids],
@@ -308,10 +305,6 @@ def stack_storage_units(storage_units, output_uri):
 
 def _group_datasets_by_time(datasets):
     return [(time, list(group)) for time, group in groupby(datasets, lambda ds: ds.time)]
-
-
-def _rasterio_resampling_method(measurement_descriptor):
-    return RESAMPLING_METHODS[measurement_descriptor['resampling_method'].lower()]
 
 
 def generate_filename(tile_index, datasets, storage_type):

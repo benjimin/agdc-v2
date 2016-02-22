@@ -65,24 +65,23 @@ storage:
   dimension_order: ['time', 'y', 'x']
 
 measurements:
-  '01_1000':
+  'band_01':
       dtype: float32
-      # 1e10
-      nodata: 10000000000
+      nodata: 10000000000   # 1e10
       resampling_method: cubic
-      varname: band_01
-  '02_1000':
-      dtype: float32
-      nodata: 10000000000
-      resampling_method: cubic
-      varname: band_02
-  '03_1000':
+      src_varname: '01_1000'
+  'band_02':
       dtype: float32
       nodata: 10000000000
       resampling_method: cubic
-      varname: band_03
-  '04_1000':
+      src_varname: '02_1000'
+  'band_03':
       dtype: float32
       nodata: 10000000000
       resampling_method: cubic
-      varname: band_04
+      src_varname: '03_1000'
+  'band_04':
+      dtype: float32
+      nodata: 10000000000
+      resampling_method: cubic
+      src_varname: '04_1000'

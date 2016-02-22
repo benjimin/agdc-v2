@@ -7,14 +7,15 @@ from __future__ import absolute_import, division
 import codecs
 import logging
 import os
-from collections import namedtuple, defaultdict
-from pathlib import Path
+from collections import namedtuple
 
 import dateutil.parser
 import numpy
 from affine import Affine
 from osgeo import osr
+from pathlib import Path
 from rasterio.coords import BoundingBox
+from rasterio.warp import RESAMPLING
 
 from datacube import compat
 from datacube.compat import parse_url
@@ -25,7 +26,7 @@ _LOG = logging.getLogger(__name__)
 Range = namedtuple('Range', ('begin', 'end'))
 Coordinate = namedtuple('Coordinate', ('dtype', 'begin', 'end', 'length', 'units'))
 CoordinateValue = namedtuple('CoordinateValue', ('dimension_name', 'value', 'dtype', 'units'))
-Variable = namedtuple('Variable', ('dtype', 'nodata', 'dimensions', 'units'))
+Variable = namedtuple('Variable', 'dtype nodata dimensions units')
 
 NETCDF_VAR_OPTIONS = {'zlib', 'complevel', 'shuffle', 'fletcher32', 'contiguous'}
 
@@ -63,13 +64,36 @@ def _cross_platform_path(path):
         return path
 
 
+class VariableWithSource(namedtuple('VariableWithSource',
+                                    'dtype nodata dimensions units rio_resampling_method')):
+    __slots__ = ()
+
+    @classmethod
+    def from_measurement(cls, measurement, dimensions):
+        return cls(measurement.dtype, measurement.nodata, dimensions, measurement.units,
+                   measurement.rio_resampling_method)
+
+
 class Measurement(object):
-    def __init__(self, name, attributes):
+    def __init__(self, name, settings, chunking=None):
+        if not settings:
+            raise TypeError('settings for a variable must be specified')
         self.name = name
-        self.attributes = attributes
-        for attr_name in ('dtype', 'nodata', 'resampling_method'):
+        mysettings = settings.copy()
+        self.attributes = mysettings.pop('attrs', {})
+        self.parameters = {}
+        self.dtype = numpy.dtype(mysettings.pop('dtype'))
+        self.src_varname = mysettings.pop('src_varname', None)
+        self.nodata = mysettings.pop('nodata', None)
+        self.units = mysettings.pop('units', 1)
+        self.resampling_method = mysettings.pop('resampling_method', None)
+        if self.resampling_method:
+            self.rio_resampling_method = getattr(RESAMPLING, str(self.resampling_method))
+        self.chunking = chunking
+        self.dimensions = tuple()
+        for param_name in NETCDF_VAR_OPTIONS:
             try:
-                setattr(self, attr_name, attributes[attr_name])
+                self.parameters[param_name] = settings.pop(param_name)
             except KeyError:
                 pass
 
@@ -85,6 +109,7 @@ class Measurement(object):
             yield "Bit    Value     Description"
             for bit, value, desc in sorted(bit_value_desc, reverse=True):
                 yield "{:<8d}{:<8d}{}".format(bit, value, desc)
+
 
         return '\n'.join(gen_human_readable(self.attributes['flags_definition']))
 
@@ -112,6 +137,11 @@ class Measurement(object):
             meanings.append(name)
 
         return masks, meanings
+
+    def __repr__(self):
+        return "{}(name={!r}, settings={!r}, chunking={!r}".format(
+            self.__class__.__name__, self.name, self.settings, self.chunking
+        )
 
 
 class DatasetMatcher(object):
@@ -145,13 +175,6 @@ class StorageType(object):  # pylint: disable=too-many-public-methods
         return self.document['description']
 
     @property
-    def measurements(self):
-        # A dictionary of the measurements to store
-        # (key is measurement id, value is a doc understood by the storage driver)
-        #: :rtype: dict
-        return self.document['measurements']
-
-    @property
     def roi(self):
         # (Optional) Limited ROI for this storage type
         #: :rtype: dict
@@ -169,26 +192,13 @@ class StorageType(object):  # pylint: disable=too-many-public-methods
         return self.document.get('global_attributes', {})
 
     @property
-    def variable_params(self):
-        variable_params = defaultdict(dict)
-        for mapping in self.measurements.values():
-            varname = mapping['varname']
-            variable_params[varname] = {k: v for k, v in mapping.items() if k in NETCDF_VAR_OPTIONS}
-            variable_params[varname]['chunksizes'] = self.chunking
-        return variable_params
-
-    @property
-    def variable_attributes(self):
-        variable_attributes = defaultdict(dict)
-        for mapping in self.measurements.values():
-            varname = mapping['varname']
-            variable_attributes[varname] = mapping.get('attrs', {})
-        return variable_attributes
-
-    @property
-    def measurement_objs(self):
-        for varname, attributes in self.measurements.items():
-            yield Measurement(name=varname, attributes=attributes)
+    def measurements(self):
+        # A dictionary of measurements
+        # Key: Measurement ID, Value: Measurement object, understood by storage driver
+        return {var_name: Measurement(name=var_name,
+                                      settings=settings,
+                                      chunking=self.chunking)
+                for var_name, settings in self.document['measurements'].items()}
 
     @property
     def filename_format(self):
@@ -273,7 +283,8 @@ class StorageType(object):  # pylint: disable=too-many-public-methods
 
 
 class StorageUnit(object):
-    def __init__(self, dataset_ids, storage_type, descriptor, relative_path=None, output_uri=None, id_=None):
+    def __init__(self, dataset_ids, storage_type, descriptor, relative_path=None,
+                 output_uri=None, id_=None):
         if relative_path and output_uri:
             raise ValueError('only specify one of `relative_path` or `output_uri`')
 
@@ -327,10 +338,12 @@ class StorageUnit(object):
         return Path(self.local_path).stat().st_size
 
     def __str__(self):
-        return "StorageUnit <type={m.name}, path={path}>".format(path=self.path, m=self.storage_type)
+        return "StorageUnit <type={m.name}, path={path}>".format(path=self.path,
+                                                                 m=self.storage_type)
 
     def __repr__(self):
-        return "{}({!r}, {!r}, {!r}, {!r}, {!r})".format(self.__class__.__name__, self.dataset_ids,
+        return "{}({!r}, {!r}, {!r}, {!r}, {!r})".format(self.__class__.__name__,
+                                                         self.dataset_ids,
                                                          self.storage_type, self.descriptor,
                                                          self.path, self.id)
 
@@ -404,7 +417,8 @@ class Dataset(object):
             else:
                 return 'EPSG:326' + str(abs(int(projection['zone'][:-1])))
 
-        raise RuntimeError('Cant figure out the projection: %s %s' % (projection['datum'], projection['zone']))
+        raise RuntimeError('Cant figure out the projection: %s %s' % (
+            projection['datum'], projection['zone']))
 
     def __str__(self):
         return "Dataset <id={id}>".format(id=self.id)
@@ -643,6 +657,7 @@ class GeoBox(object):
     def coordinates(self):
         xs = numpy.array([0, self.width - 1]) * self.affine.a + self.affine.c + self.affine.a / 2
         ys = numpy.array([0, self.height - 1]) * self.affine.e + self.affine.f + self.affine.e / 2
+
 
         crs = self.crs
         if crs.IsGeographic():
