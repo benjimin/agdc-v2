@@ -4,6 +4,7 @@ Create netCDF4 Storage Units and write data to them
 """
 from __future__ import absolute_import
 
+from datetime import datetime
 import logging
 
 import netCDF4
@@ -112,13 +113,13 @@ class _EncodedStrings(object):
         if isinstance(value, string_types):
             self._wrapped_obj[name] = value.encode('utf8')
         else:
-            super(self.__class__, self).__setattr(name, value
+            super(self.__class__, self).__setattr(name, value)
 
 
-def _create_variable_safe_attributes(nco, *vars, **kwargs):
-    var = nco.createVariable(*vars, **kwargs)
+def _create_variable_safe_attributes(nco, *args, **kwargs):
+    nc_var = nco.createVariable(*args, **kwargs)
 
-    return _EncodedStrings(var)
+    return _EncodedStrings(nc_var)
 
 
 def _create_latlon_grid_mapping_variable(nco, crs):

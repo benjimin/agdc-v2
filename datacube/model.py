@@ -8,12 +8,12 @@ import codecs
 import logging
 import os
 from collections import namedtuple
+from pathlib import Path
 
 import dateutil.parser
 import numpy
 from affine import Affine
 from osgeo import osr
-from pathlib import Path
 from rasterio.coords import BoundingBox
 from rasterio.warp import RESAMPLING
 
@@ -84,6 +84,7 @@ class Measurement(object):
         self.parameters = {}
         self.dtype = numpy.dtype(mysettings.pop('dtype'))
         self.src_varname = mysettings.pop('src_varname', None)
+        self.flags_definition = mysettings.pop('flags_definition', None)
         self.nodata = mysettings.pop('nodata', None)
         self.units = mysettings.pop('units', 1)
         self.resampling_method = mysettings.pop('resampling_method', None)
@@ -110,11 +111,10 @@ class Measurement(object):
             for bit, value, desc in sorted(bit_value_desc, reverse=True):
                 yield "{:<8d}{:<8d}{}".format(bit, value, desc)
 
-
-        return '\n'.join(gen_human_readable(self.attributes['flags_definition']))
+        return '\n'.join(gen_human_readable(self.flags_definition))
 
     def flag_mask_meanings(self):
-        flags_def = self.attributes['flags_definition']
+        flags_def = self.flags_definition
 
         max_bit = max([bit_def['bit_index'] for bit_def in flags_def.values()])
 
@@ -125,7 +125,7 @@ class Measurement(object):
         masks = []
         meanings = []
 
-        for i in range(max_bit+1):
+        for i in range(max_bit + 1):
             try:
                 name = bit_value_name[(i, 1)]
             except KeyError:
@@ -133,7 +133,7 @@ class Measurement(object):
                     name = 'no_' + bit_value_name[(i, 0)]
                 except KeyError:
                     continue
-            masks.append(2**i)
+            masks.append(2 ** i)
             meanings.append(name)
 
         return masks, meanings
@@ -657,7 +657,6 @@ class GeoBox(object):
     def coordinates(self):
         xs = numpy.array([0, self.width - 1]) * self.affine.a + self.affine.c + self.affine.a / 2
         ys = numpy.array([0, self.height - 1]) * self.affine.e + self.affine.f + self.affine.e / 2
-
 
         crs = self.crs
         if crs.IsGeographic():
