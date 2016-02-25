@@ -51,36 +51,50 @@ measurements:
       nodata: -999
       resampling_method: cubic
       src_varname: '1'
+      attrs:
+         units: '1'
   'band_20':
       dtype: int16
       nodata: -999
       resampling_method: cubic
       src_varname: '2'
+      attrs:
+         units: '1'
   'band_30':
       dtype: int16
       nodata: -999
       resampling_method: cubic
       src_varname: '3'
+      attrs:
+         units: '1'
   'band_40':
       dtype: int16
       nodata: -999
       resampling_method: cubic
       src_varname: '4'
+      attrs:
+         units: '1'
   'band_50':
       dtype: int16
       nodata: -999
       resampling_method: cubic
       src_varname: '5'
+      attrs:
+         units: '1'
   'band_60':
       dtype: int16
       nodata: -999
       resampling_method: cubic
       src_varname: '6'
+      attrs:
+         units: '1'
   'band_70':
       dtype: int16
       nodata: -999
       resampling_method: cubic
       src_varname: '7'
+      attrs:
+         units: '1'
 
 ---
 
