@@ -64,7 +64,7 @@ def _cross_platform_path(path):
 
 
 class Measurement(object):
-    def __init__(self, settings, name=None, chunking=None):
+    def __init__(self, settings, name=None, chunking=None, dimensions=None):
         if not settings:
             raise TypeError('settings for a variable must be specified')
         self.name = name
@@ -80,8 +80,7 @@ class Measurement(object):
         if self.resampling_method:
             self.rio_resampling_method = getattr(RESAMPLING, str(self.resampling_method))
         self.chunking = chunking
-        self.dimensions = mysettings.pop('dimensions', tuple())
-        self.global_attrs = mysettings.pop('global_attrs', {})
+        self.dimensions = dimensions or tuple()
         for param_name in NETCDF_VAR_OPTIONS:
             try:
                 self.parameters[param_name] = settings.pop(param_name)
@@ -139,8 +138,8 @@ class Measurement(object):
         return self.__dict__ != other.__dict__
 
     def __repr__(self):
-        return "{}(name={!r}, settings={!r}, chunking={!r}".format(
-            self.__class__.__name__, self.name, self.settings, self.chunking
+        return "{}(name={!r}, chunking={!r}, dimensions={r!})".format(
+            self.__class__.__name__, self.name, self.chunking, self.dimensions
         )
 
 
@@ -197,7 +196,8 @@ class StorageType(object):  # pylint: disable=too-many-public-methods
         # Key: Measurement ID, Value: Measurement object, understood by storage driver
         return {var_name: Measurement(settings=settings,
                                       name=var_name,
-                                      chunking=self.chunking)
+                                      chunking=self.chunking,
+                                      dimensions=self.dimensions)
                 for var_name, settings in self.document['measurements'].items()}
 
     @property

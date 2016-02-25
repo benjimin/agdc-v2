@@ -10,7 +10,7 @@ from collections import defaultdict
 
 import numpy
 
-from datacube.model import Coordinate, Measurement, time_coordinate_value
+from datacube.model import Coordinate, time_coordinate_value
 from datacube.storage.access.backends import NetCDF4StorageUnit, GeoTifStorageUnit, FauxStorageUnit
 from datacube.storage.access.core import StorageUnitDimensionProxy, StorageUnitBase
 
@@ -50,14 +50,7 @@ def make_storage_unit(su, is_diskless=False):
         if dim in su.storage_type.spatial_dimensions:
             crs[dim] = su.storage_type.crs
     coordinates = su.coordinates
-    variables = {
-        attributes['varname']: Measurement.variable_args(
-            dtype=numpy.dtype(attributes['dtype']),
-            nodata=attributes.get('nodata', None),
-            dimensions=su.storage_type.dimensions,
-            units=attributes.get('units', None))
-        for attributes in su.storage_type.measurements.values()
-        }
+    variables = su.storage_type.measurements
     attributes = {
         'storage_type': su.storage_type
     }
