@@ -71,12 +71,18 @@ class Measurement(object):
         self.units = units
         self.name = name
 
+        # Attributes
         self.flags_definition = None
-        self.resampling_method = None
-        self.rio_resampling_method = None
         self.attributes = {}
+
+        # NetCDF jank
         self.parameters = {}
         self.chunking = None
+
+        # Ingestion related
+        self.resampling_method = None
+        self.rio_resampling_method = None
+
         self.src_varname = None
 
     @classmethod

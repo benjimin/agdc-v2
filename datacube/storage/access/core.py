@@ -19,6 +19,7 @@ Core classes used to access data
 
 from __future__ import absolute_import, division, print_function
 
+from copy import copy
 import sys
 
 import numpy
@@ -190,8 +191,9 @@ class StorageUnitDimensionProxy(StorageUnitBase):
         self.coordinates.update(storage_unit.coordinates)
 
         def expand_var(var):
-            var.dimensions = self._dimensions + var.dimensions
-            return var
+            new_var = copy(var)
+            new_var.dimensions = self._dimensions + var.dimensions
+            return new_var
 
         self.variables = {name: expand_var(var) for name, var in storage_unit.variables.items()}
 
