@@ -190,8 +190,8 @@ class StorageUnitDimensionProxy(StorageUnitBase):
         self.coordinates.update(storage_unit.coordinates)
 
         def expand_var(var):
-            return Measurement(
-                var.dtype, var.nodata, self._dimensions + var.dimensions, var.units)
+            var.dimensions = self._dimensions + var.dimensions
+            return var
 
         self.variables = {name: expand_var(var) for name, var in storage_unit.variables.items()}
 
