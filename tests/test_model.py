@@ -160,7 +160,7 @@ EXPECTED_HUMAN_READABLE_FLAGS = dedent("""\
 
 
 def test_measurements_model_netcdfflags():
-    flagged_measurement = Measurement(settings=EXAMPLE_PQ_MEASUREMENT_DEF)
+    flagged_measurement = Measurement.from_dict(settings=EXAMPLE_PQ_MEASUREMENT_DEF)
 
     masks, meanings = flagged_measurement.flag_mask_meanings()
     assert [1, 2, 4, 512] == masks
@@ -169,5 +169,5 @@ def test_measurements_model_netcdfflags():
 
 
 def test_measurements_model_human_readable_flags():
-    flagged_measurement = Measurement(settings=EXAMPLE_PQ_MEASUREMENT_DEF)
+    flagged_measurement = Measurement.from_dict(settings=EXAMPLE_PQ_MEASUREMENT_DEF)
     assert EXPECTED_HUMAN_READABLE_FLAGS == flagged_measurement.human_readable_flags_definition()

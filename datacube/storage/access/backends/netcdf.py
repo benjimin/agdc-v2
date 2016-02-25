@@ -82,7 +82,7 @@ class NetCDF4StorageUnit(StorageUnitBase):
                            getattr(var, 'missing_value', None) or
                            getattr(var, 'fill_value', None))
                     ndv = ndv.item() if ndv else None
-                    variables[name] = Measurement.variable_args(numpy.dtype(var.dtype), ndv, var.dimensions, units)
+                    variables[name] = Measurement(numpy.dtype(var.dtype), ndv, var.dimensions, units)
         crs = {}
         if grid_mappings:
             for standard_name, real_name in standard_names.items():

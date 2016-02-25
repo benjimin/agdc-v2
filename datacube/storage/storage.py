@@ -121,9 +121,8 @@ class WarpingStorageUnit(StorageUnitBase):
             measurement.dimensions = self.geobox.dimensions
             self.variables[name] = measurement
 
-        self.variables['extra_metadata'] = Measurement(settings=dict(dtype='S30000',
-                                                                     units=None),
-                                                       name='extra_metadata', )
+        self.variables['extra_metadata'] = Measurement(dtype='S30000',
+                                                       name='extra_metadata')
 
     @property
     def crs(self):
@@ -253,7 +252,7 @@ def storage_unit_to_access_unit(storage_unit):
     """
     coordinates = storage_unit.coordinates
     variables = {
-        attributes['varname']: Measurement.variable_args(
+        attributes['varname']: Measurement(
             dtype=numpy.dtype(attributes['dtype']),
             nodata=attributes.get('nodata', None),
             dimensions=storage_unit.storage_type.dimensions,
@@ -261,8 +260,8 @@ def storage_unit_to_access_unit(storage_unit):
         for attributes in storage_unit.storage_type.measurements.values()
         }
     if storage_unit.storage_type.driver == 'NetCDF CF':
-        variables['extra_metadata'] = Measurement.variable_args(
-            numpy.dtype('S30000'), None, ('time',), None)
+        variables['extra_metadata'] = Measurement(
+            numpy.dtype('S30000'), ('time',))
         return NetCDF4StorageUnit(storage_unit.local_path, coordinates=coordinates, variables=variables)
 
     if storage_unit.storage_type.driver == 'GeoTiff':

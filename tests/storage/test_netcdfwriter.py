@@ -117,7 +117,7 @@ def test_create_string_variable(tmpnetcdf_filename):
     dtype = numpy.dtype('S100')
     data = numpy.array(["test-str1", "test-str2", "test-str3"], dtype=dtype)
 
-    var = create_variable(nco, 'str_var', Measurement.variable_args(dtype, None, ('greg', ), None))
+    var = create_variable(nco, 'str_var', Measurement(dtype, None, ('greg', ), None))
     var[:] = netcdfy_data(data)
     nco.close()
 
@@ -132,9 +132,9 @@ def test_chunksizes(tmpnetcdf_filename):
     coord2 = create_coordinate(nco, 'bleh', Coordinate(numpy.dtype('int'), 0, 0, 5, 'metric blehs'))
 
     no_chunks = create_variable(nco, 'no_chunks',
-                                Measurement.variable_args(numpy.dtype(int), None, ('greg', 'bleh'), None))
+                                Measurement(numpy.dtype(int), None, ('greg', 'bleh'), None))
     min_max_chunks = create_variable(nco, 'min_max_chunks',
-                                     Measurement.variable_args(numpy.dtype(int), None, ('greg', 'bleh'), None),
+                                     Measurement(numpy.dtype(int), None, ('greg', 'bleh'), None),
                                      chunksizes=[2, 50])
     nco.close()
 

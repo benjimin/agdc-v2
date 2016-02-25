@@ -64,28 +64,46 @@ def _cross_platform_path(path):
 
 
 class Measurement(object):
-    def __init__(self, settings, name=None, chunking=None, dimensions=None):
-        if not settings:
-            raise TypeError('settings for a variable must be specified')
-        self.name = name
-        mysettings = settings.copy()
-        self.attributes = mysettings.pop('attrs', {})
-        self.parameters = {}
-        self.dtype = numpy.dtype(mysettings.pop('dtype'))
-        self.units = mysettings.pop('units', 1)
-        self.src_varname = mysettings.pop('src_varname', None)
-        self.flags_definition = mysettings.pop('flags_definition', None)
-        self.nodata = mysettings.pop('nodata', None)
-        self.resampling_method = mysettings.pop('resampling_method', None)
-        if self.resampling_method:
-            self.rio_resampling_method = getattr(RESAMPLING, str(self.resampling_method))
-        self.chunking = chunking
+    def __init__(self, dtype, nodata=None, dimensions=None, units=None, name=""):
+        self.dtype = numpy.dtype(dtype)
+        self.nodata = nodata
         self.dimensions = dimensions or tuple()
+        self.units = units
+        self.name = name
+
+        self.flags_definition = None
+        self.resampling_method = None
+        self.rio_resampling_method = None
+        self.attributes = {}
+        self.parameters = {}
+        self.chunking = None
+        self.src_varname = None
+
+    @classmethod
+    def from_dict(cls, settings, name=None, chunking=None, dimensions=None):
+        measurement = cls(settings['dtype'], settings['nodata'],
+                          dimensions, settings.get('units'))
+
+        mysettings = settings.copy()
+
+        measurement.name = name
+        measurement.chunking = chunking
+
+        measurement.attributes = mysettings.pop('attrs', {})
+        measurement.src_varname = mysettings.pop('src_varname', None)
+        measurement.flags_definition = mysettings.pop('flags_definition', None)
+        measurement.nodata = mysettings.pop('nodata', None)
+        measurement.resampling_method = mysettings.pop('resampling_method', None)
+        if measurement.resampling_method:
+            measurement.rio_resampling_method = getattr(RESAMPLING, str(measurement.resampling_method))
+
+        measurement.parameters = {}
         for param_name in NETCDF_VAR_OPTIONS:
             try:
-                self.parameters[param_name] = settings.pop(param_name)
+                measurement.parameters[param_name] = settings.pop(param_name)
             except KeyError:
                 pass
+        return measurement
 
     @classmethod
     def variable_args(cls, dtype, nodata, dimensions, units):
@@ -194,10 +212,10 @@ class StorageType(object):  # pylint: disable=too-many-public-methods
     def measurements(self):
         # A dictionary of measurements
         # Key: Measurement ID, Value: Measurement object, understood by storage driver
-        return {var_name: Measurement(settings=settings,
-                                      name=var_name,
-                                      chunking=self.chunking,
-                                      dimensions=self.dimensions)
+        return {var_name: Measurement.from_dict(settings=settings,
+                                                name=var_name,
+                                                chunking=self.chunking,
+                                                dimensions=self.dimensions)
                 for var_name, settings in self.document['measurements'].items()}
 
     @property

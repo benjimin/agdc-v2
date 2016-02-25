@@ -27,14 +27,14 @@ ds1 = FauxStorageUnit({
     'y': Coordinate(numpy.float32, 0, 9.5, 20, '1'),
     'x': Coordinate(numpy.float32, 9, 0, 10, '1')
 }, {
-    'B10': Measurement.variable_args(numpy.float32, numpy.nan, ('t', 'y', 'x'), '1')
+    'B10': Measurement(numpy.float32, numpy.nan, ('t', 'y', 'x'), '1')
 })
 ds2 = FauxStorageUnit({
     't': Coordinate(numpy.int, 500, 600, 3, '1'),
     'y': Coordinate(numpy.float32, 0, 9.5, 20, '1'),
     'x': Coordinate(numpy.float32, 9, 0, 10, '1')
 }, {
-    'B10': Measurement.variable_args(numpy.float32, numpy.nan, ('t', 'y', 'x'), '1')
+    'B10': Measurement(numpy.float32, numpy.nan, ('t', 'y', 'x'), '1')
 })
 
 

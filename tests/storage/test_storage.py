@@ -77,7 +77,7 @@ def test_write_access_unit_to_netcdf(tmpnetcdf_filename):
                                     numpy.dtype(numpy.int), begin=100, end=400,
                                     length=4, units='seconds')},
                             {
-                                'B10': Measurement.variable_args(
+                                'B10': Measurement(
                                     dtype='float32',
                                     nodata=numpy.nan,
                                     dimensions=('time', 'latitude', 'longitude'),
