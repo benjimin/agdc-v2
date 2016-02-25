@@ -89,7 +89,7 @@ class Measurement(object):
 
     @classmethod
     def variable_args(cls, dtype, nodata, dimensions, units):
-        return cls({'dtype': dtype, 'nodata': nodata, 'dimensions': dimensions, 'units': units})
+        return cls({'dtype': dtype, 'nodata': nodata, 'units': units}, dimensions=dimensions)
 
     def human_readable_flags_definition(self):
         def gen_human_readable(flags_def):
@@ -138,7 +138,7 @@ class Measurement(object):
         return self.__dict__ != other.__dict__
 
     def __repr__(self):
-        return "{}(name={!r}, chunking={!r}, dimensions={r!})".format(
+        return "{}(name={!r}, chunking={!r}, dimensions={!r})".format(
             self.__class__.__name__, self.name, self.chunking, self.dimensions
         )
 
