@@ -22,7 +22,7 @@ import numpy
 import netCDF4 as nc4
 
 from ..core import StorageUnitBase
-from datacube.model import Coordinate, Variable
+from datacube.model import Coordinate, Measurement
 from ..indexing import Range, range_to_index, normalize_index
 
 _GLOBAL_LOCK = threading.Lock()
@@ -82,7 +82,7 @@ class NetCDF4StorageUnit(StorageUnitBase):
                            getattr(var, 'missing_value', None) or
                            getattr(var, 'fill_value', None))
                     ndv = ndv.item() if ndv else None
-                    variables[name] = Variable(numpy.dtype(var.dtype), ndv, var.dimensions, units)
+                    variables[name] = Measurement.variable_args(numpy.dtype(var.dtype), ndv, var.dimensions, units)
         crs = {}
         if grid_mappings:
             for standard_name, real_name in standard_names.items():

@@ -20,6 +20,7 @@ Core classes used to access data
 from __future__ import absolute_import, division, print_function
 
 import sys
+
 import numpy
 
 try:
@@ -27,7 +28,7 @@ try:
 except ImportError:
     from .ghetto import DataArray
 
-from datacube.model import Coordinate, Variable
+from datacube.model import Coordinate, Measurement
 from .indexing import make_index, index_shape, normalize_index, Range
 
 
@@ -138,6 +139,7 @@ class StorageUnitVariableProxy(StorageUnitBase):
     """
     Proxy remapping variable names
     """
+
     def __init__(self, storage_unit, varmap):
         """
         :param storage_unit: storage unit to proxy
@@ -173,6 +175,7 @@ class StorageUnitDimensionProxy(StorageUnitBase):
     """
     Proxy adding extra dimensions
     """
+
     def __init__(self, storage_unit, *coords):
         """
         :param storage_unit: storage unit to proxy
@@ -187,7 +190,9 @@ class StorageUnitDimensionProxy(StorageUnitBase):
         self.coordinates.update(storage_unit.coordinates)
 
         def expand_var(var):
-            return Variable(var.dtype, var.nodata, self._dimensions + var.dimensions, var.units)
+            return Measurement.variable_args(
+                var.dtype, var.nodata, self._dimensions + var.dimensions, var.units)
+
         self.variables = {name: expand_var(var) for name, var in storage_unit.variables.items()}
 
     def __getattr__(self, item):
@@ -212,7 +217,7 @@ class StorageUnitDimensionProxy(StorageUnitBase):
         ndims = len(self._dimensions)
         if any(i == 0 for i in shape[:ndims]):
             return dest
-        slicer = (0,)*ndims+(Ellipsis, )
+        slicer = (0,) * ndims + (Ellipsis,)
         self._storage_unit._fill_data(name, index[ndims:], dest[slicer])  # pylint: disable=protected-access
         return dest
 
@@ -221,7 +226,8 @@ class StorageUnitStack(StorageUnitBase):
     """
     Proxy stacking multiple storage units along a dimension
     """
-    def __init__(self, storage_units, stack_dim):
+
+    def __init__(self, storage_units, stack_dim, global_attrs=None):
         """
         :param storage_units: storage unit to stack
         :param stack_dim: name of the dimension to stack along
@@ -243,6 +249,7 @@ class StorageUnitStack(StorageUnitBase):
                                                  storage_units[-1].coordinates[stack_dim].end,
                                                  sum(su.coordinates[stack_dim].length for su in storage_units),
                                                  storage_units[0].coordinates[stack_dim].units)
+        self.global_attrs = global_attrs
         # TODO: merge attributes
 
     def __getattr__(self, item):
@@ -253,8 +260,8 @@ class StorageUnitStack(StorageUnitBase):
         data = []
         for su in self._storage_units:
             length = su.coordinates[self._stack_dim].length
-            if idx < index.stop and idx+length > index.start:
-                slice_ = slice(max(0, index.start-idx), min(length, index.stop-idx), index.step)
+            if idx < index.stop and idx + length > index.start:
+                slice_ = slice(max(0, index.start - idx), min(length, index.stop - idx), index.step)
                 data.append(su.get_coord(self._stack_dim, slice_)[0])
             idx += length
             if idx >= index.stop:
@@ -271,14 +278,14 @@ class StorageUnitStack(StorageUnitBase):
                 if range_.begin <= coord.end and range_.end >= coord.begin:
                     d = su.get_coord(self._stack_dim, Range(max(range_.begin, coord.begin), min(range_.end, coord.end)))
                     data.append(d[0])
-                    index = slice(min(index.start, idx+d[1].start), max(index.stop, idx+d[1].stop), 1)
+                    index = slice(min(index.start, idx + d[1].start), max(index.stop, idx + d[1].stop), 1)
                 if range_.begin > coord.end:
                     break
             else:  # decreasing coord
                 if range_.begin <= coord.begin and range_.end >= coord.end:
                     d = su.get_coord(self._stack_dim, Range(max(range_.begin, coord.end), min(range_.end, coord.begin)))
                     data.append(d[0])
-                    index = slice(min(index.start, idx+d[1].start), max(index.stop, idx+d[1].stop), 1)
+                    index = slice(min(index.start, idx + d[1].start), max(index.stop, idx + d[1].stop), 1)
                 if range_.end < coord.begin:
                     break
             idx += coord.length
@@ -298,10 +305,10 @@ class StorageUnitStack(StorageUnitBase):
         idx = 0
         for su in self._storage_units:
             length = su.coordinates[self._stack_dim].length
-            if idx < index[0].stop and idx+length > index[0].start:
-                slice_ = slice(max(0, index[0].start-idx), min(length, index[0].stop-idx), index[0].step)
+            if idx < index[0].stop and idx + length > index[0].start:
+                slice_ = slice(max(0, index[0].start - idx), min(length, index[0].stop - idx), index[0].step)
                 su_index = (slice_,) + index[1:]
-                dest_index = slice(idx+slice_.start-index[0].start, idx+slice_.stop-index[0].start)
+                dest_index = slice(idx + slice_.start - index[0].start, idx + slice_.stop - index[0].start)
                 su._fill_data(name, su_index, dest[dest_index])  # pylint: disable=protected-access
             idx += length
             if idx >= index[0].stop:

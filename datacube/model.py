@@ -26,7 +26,6 @@ _LOG = logging.getLogger(__name__)
 Range = namedtuple('Range', ('begin', 'end'))
 Coordinate = namedtuple('Coordinate', ('dtype', 'begin', 'end', 'length', 'units'))
 CoordinateValue = namedtuple('CoordinateValue', ('dimension_name', 'value', 'dtype', 'units'))
-Variable = namedtuple('Variable', 'dtype nodata dimensions units')
 
 NETCDF_VAR_OPTIONS = {'zlib', 'complevel', 'shuffle', 'fletcher32', 'contiguous'}
 
@@ -64,18 +63,8 @@ def _cross_platform_path(path):
         return path
 
 
-class VariableWithSource(namedtuple('VariableWithSource',
-                                    'dtype nodata dimensions units rio_resampling_method')):
-    __slots__ = ()
-
-    @classmethod
-    def from_measurement(cls, measurement, dimensions):
-        return cls(measurement.dtype, measurement.nodata, dimensions, measurement.units,
-                   measurement.rio_resampling_method)
-
-
 class Measurement(object):
-    def __init__(self, name, settings, chunking=None):
+    def __init__(self, settings, name=None, chunking=None):
         if not settings:
             raise TypeError('settings for a variable must be specified')
         self.name = name
@@ -83,20 +72,25 @@ class Measurement(object):
         self.attributes = mysettings.pop('attrs', {})
         self.parameters = {}
         self.dtype = numpy.dtype(mysettings.pop('dtype'))
+        self.units = mysettings.pop('units', 1)
         self.src_varname = mysettings.pop('src_varname', None)
         self.flags_definition = mysettings.pop('flags_definition', None)
         self.nodata = mysettings.pop('nodata', None)
-        self.units = mysettings.pop('units', 1)
         self.resampling_method = mysettings.pop('resampling_method', None)
         if self.resampling_method:
             self.rio_resampling_method = getattr(RESAMPLING, str(self.resampling_method))
         self.chunking = chunking
-        self.dimensions = tuple()
+        self.dimensions = mysettings.pop('dimensions', tuple())
+        self.global_attrs = mysettings.pop('global_attrs', {})
         for param_name in NETCDF_VAR_OPTIONS:
             try:
                 self.parameters[param_name] = settings.pop(param_name)
             except KeyError:
                 pass
+
+    @classmethod
+    def variable_args(cls, dtype, nodata, dimensions, units):
+        return cls({'dtype': dtype, 'nodata': nodata, 'dimensions': dimensions, 'units': units})
 
     def human_readable_flags_definition(self):
         def gen_human_readable(flags_def):
@@ -195,8 +189,8 @@ class StorageType(object):  # pylint: disable=too-many-public-methods
     def measurements(self):
         # A dictionary of measurements
         # Key: Measurement ID, Value: Measurement object, understood by storage driver
-        return {var_name: Measurement(name=var_name,
-                                      settings=settings,
+        return {var_name: Measurement(settings=settings,
+                                      name=var_name,
                                       chunking=self.chunking)
                 for var_name, settings in self.document['measurements'].items()}
 

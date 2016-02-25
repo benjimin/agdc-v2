@@ -19,7 +19,7 @@ import numpy
 import rasterio
 
 from ..core import StorageUnitBase
-from datacube.model import Coordinate, Variable
+from datacube.model import Coordinate, Measurement
 
 
 class GeoTifStorageUnit(StorageUnitBase):
@@ -43,7 +43,7 @@ class GeoTifStorageUnit(StorageUnitBase):
             }
 
         def band2var(i):
-            return Variable(dataset.dtypes[i], dataset.nodatavals[i], ('y', 'x'), '1')
+            return Measurement.variable_args(dataset.dtypes[i], dataset.nodatavals[i], ('y', 'x'), '1')
         variables = {'layer%d' % (i + 1): band2var(i) for i in range(dataset.count)}
 
         return cls(filepath, variables=variables, coordinates=coordinates)

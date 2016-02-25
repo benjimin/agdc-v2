@@ -22,7 +22,7 @@ import numpy
 from affine import Affine
 from mock import MagicMock
 
-from datacube.model import Coordinate, Variable, GeoBox, Measurement
+from datacube.model import Coordinate, GeoBox, Measurement
 from datacube.storage.access.core import StorageUnitBase
 from datacube.storage.storage import write_access_unit_to_netcdf
 
@@ -34,11 +34,12 @@ GEO_PROJ = 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.25722
 class GeoBoxStorageUnit(StorageUnitBase):
     """ Fake Storage Unit for testing """
 
-    def __init__(self, geobox, coordinates, variables):
+    def __init__(self, geobox, coordinates, variables, global_attrs=None):
         self.geobox = geobox
         self.coordinates = geobox.coordinates.copy()
         self.coordinates.update(coordinates)
         self.variables = variables
+        self.global_attrs = global_attrs or {}
 
     @property
     def crs(self):
@@ -71,15 +72,18 @@ def test_write_access_unit_to_netcdf(tmpnetcdf_filename):
     affine = Affine.scale(0.1, 0.1) * Affine.translation(20, 30)
     geobox = GeoBox(100, 100, affine, GEO_PROJ)
     ds1 = GeoBoxStorageUnit(geobox,
-                            {'time': Coordinate(numpy.dtype(numpy.int), begin=100, end=400,
-                                                length=4, units='seconds')},
                             {
-                                'B10': Variable(numpy.dtype(numpy.float32),
-                                                nodata=numpy.nan,
-                                                dimensions=('time', 'latitude', 'longitude'),
-                                                units='1')
+                                'time': Coordinate(
+                                    numpy.dtype(numpy.int), begin=100, end=400,
+                                    length=4, units='seconds')},
+                            {
+                                'B10': Measurement.variable_args(
+                                    dtype='float32',
+                                    nodata=numpy.nan,
+                                    dimensions=('time', 'latitude', 'longitude'),
+                                    units='1')
                             })
-    write_access_unit_to_netcdf(ds1, {}, {'B10': MagicMock(type=Measurement)},
+    write_access_unit_to_netcdf(ds1,
                                 tmpnetcdf_filename)
 
     with netCDF4.Dataset(tmpnetcdf_filename) as nco:

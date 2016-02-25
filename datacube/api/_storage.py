@@ -10,11 +10,9 @@ from collections import defaultdict
 
 import numpy
 
-from datacube.model import Coordinate
-from datacube.storage.storage import StorageUnitBase
-from datacube.model import Variable, time_coordinate_value
-from datacube.storage.access.core import StorageUnitDimensionProxy
+from datacube.model import Coordinate, Measurement, time_coordinate_value
 from datacube.storage.access.backends import NetCDF4StorageUnit, GeoTifStorageUnit, FauxStorageUnit
+from datacube.storage.access.core import StorageUnitDimensionProxy, StorageUnitBase
 
 
 def make_in_memory_storage_unit(su, coordinates, variables, attributes, crs):
@@ -53,13 +51,13 @@ def make_storage_unit(su, is_diskless=False):
             crs[dim] = su.storage_type.crs
     coordinates = su.coordinates
     variables = {
-        attributes['varname']: Variable(
+        attributes['varname']: Measurement.variable_args(
             dtype=numpy.dtype(attributes['dtype']),
             nodata=attributes.get('nodata', None),
             dimensions=su.storage_type.dimensions,
             units=attributes.get('units', None))
         for attributes in su.storage_type.measurements.values()
-    }
+        }
     attributes = {
         'storage_type': su.storage_type
     }
@@ -145,7 +143,6 @@ class StorageUnitCollection(object):
         return spatial_crs
 
 
-
 class MemoryStorageUnit(FauxStorageUnit):
     def __init__(self, coordinates, variables, attributes=None, coodinate_values=None, crs=None, file_path=None):
         super(MemoryStorageUnit, self).__init__(coordinates, variables)
@@ -172,6 +169,7 @@ class MemoryStorageUnit(FauxStorageUnit):
 
 class IrregularStorageUnitSlice(StorageUnitBase):
     """ Storage Unit interface for accessing another Storage unit at a defined coordinate  """
+
     def __init__(self, parent, dimension, index):
         self._parent = parent
         self._sliced_coordinate = dimension
@@ -198,6 +196,6 @@ class IrregularStorageUnitSlice(StorageUnitBase):
 
     def _fill_data(self, name, index, dest):
         var = self.variables[name]
-        subset_slice = {self._sliced_coordinate:slice(self._index, self._index+1)}
+        subset_slice = {self._sliced_coordinate: slice(self._index, self._index + 1)}
         data = self._parent.get(name, **subset_slice)
         numpy.copyto(dest, data.data)

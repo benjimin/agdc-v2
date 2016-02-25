@@ -25,8 +25,8 @@ from rasterio.coords import BoundingBox
 from rasterio.warp import RESAMPLING, transform_bounds
 
 from datacube import compat
-from datacube.model import StorageUnit, GeoBox, Variable, _uri_to_local_path, time_coordinate_value, \
-    VariableWithSource, Measurement
+from datacube.model import StorageUnit, GeoBox, _uri_to_local_path, time_coordinate_value, \
+    Measurement
 from datacube.storage import netcdf_writer
 from datacube.utils import namedtuples2dicts, attrs_all_equal
 from datacube.storage.access.core import StorageUnitBase, StorageUnitDimensionProxy, StorageUnitStack
@@ -121,9 +121,9 @@ class WarpingStorageUnit(StorageUnitBase):
             measurement.dimensions = self.geobox.dimensions
             self.variables[name] = measurement
 
-        self.variables['extra_metadata'] = Measurement(name='extra_metadata',
-                                                       settings=dict(dtype='S30000',
-                                                                     units=None))
+        self.variables['extra_metadata'] = Measurement(settings=dict(dtype='S30000',
+                                                                     units=None),
+                                                       name='extra_metadata', )
 
     @property
     def crs(self):
@@ -161,12 +161,10 @@ class WarpingStorageUnit(StorageUnitBase):
 
 
 # TODO: global_attributes and variables should be members of access_unit
-def write_access_unit_to_netcdf(access_unit, global_attributes, variables, filename):
+def write_access_unit_to_netcdf(access_unit, filename):
     """
     Write access.StorageUnit to NetCDF4.
     :param access_unit:
-    :param global_attributes: key value pairs to write as global attributes
-    :param variables: mapping of variable name to model.Measurement object
     :param filename: output filename
     :return:
 
@@ -191,7 +189,7 @@ def write_access_unit_to_netcdf(access_unit, global_attributes, variables, filen
             netcdf_writer.write_attribute(data_var, key, value)
 
     # write global atrributes
-    for key, value in global_attributes.items():
+    for key, value in access_unit.global_attrs.items():
         netcdf_writer.write_attribute(nco, key, value)
     nco.close()
 
@@ -232,11 +230,13 @@ def create_storage_unit_from_datasets(tile_index, datasets, storage_type, output
             time_coordinate_value(time)
         )
         for time, group in datasets_grouped_by_time]
-    access_unit = StorageUnitStack(storage_units=storage_units, stack_dim='time')
+    access_unit = StorageUnitStack(
+        storage_units=storage_units,
+        stack_dim='time',
+        global_attrs=storage_type.global_attributes
+    )
 
     write_access_unit_to_netcdf(access_unit,
-                                storage_type.global_attributes,
-                                variables=access_unit.variables,
                                 filename=str(_uri_to_local_path(output_uri)))
 
     descriptor = _accesss_unit_descriptor(access_unit, tile_index=tile_index)
@@ -253,7 +253,7 @@ def storage_unit_to_access_unit(storage_unit):
     """
     coordinates = storage_unit.coordinates
     variables = {
-        attributes['varname']: Variable(
+        attributes['varname']: Measurement.variable_args(
             dtype=numpy.dtype(attributes['dtype']),
             nodata=attributes.get('nodata', None),
             dimensions=storage_unit.storage_type.dimensions,
@@ -261,7 +261,8 @@ def storage_unit_to_access_unit(storage_unit):
         for attributes in storage_unit.storage_type.measurements.values()
         }
     if storage_unit.storage_type.driver == 'NetCDF CF':
-        variables['extra_metadata'] = Variable(numpy.dtype('S30000'), None, ('time',), None)
+        variables['extra_metadata'] = Measurement.variable_args(
+            numpy.dtype('S30000'), None, ('time',), None)
         return NetCDF4StorageUnit(storage_unit.local_path, coordinates=coordinates, variables=variables)
 
     if storage_unit.storage_type.driver == 'GeoTiff':
@@ -290,10 +291,9 @@ def stack_storage_units(storage_units, output_uri):
     access_unit.crs = geobox.crs
     access_unit.affine = geobox.affine
     access_unit.extent = geobox.extent
+    access_unit.global_attrs = storage_type.global_attributes
 
     write_access_unit_to_netcdf(access_unit,
-                                storage_type.global_attributes,
-                                variables=dict(storage_type.measurements),
                                 filename=str(_uri_to_local_path(output_uri)))
 
     descriptor = _accesss_unit_descriptor(access_unit, tile_index=tile_index)
