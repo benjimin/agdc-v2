@@ -6,7 +6,7 @@ import pytest
 
 from osgeo import osr
 
-from datacube.model import Variable, Coordinate
+from datacube.model import Measurement, Coordinate
 from datacube.storage.netcdf_writer import create_netcdf, create_coordinate, create_variable, netcdfy_data, \
     create_grid_mapping_variable
 
@@ -117,7 +117,7 @@ def test_create_string_variable(tmpnetcdf_filename):
     dtype = numpy.dtype('S100')
     data = numpy.array(["test-str1", "test-str2", "test-str3"], dtype=dtype)
 
-    var = create_variable(nco, 'str_var', Variable(dtype, None, ('greg', ), None))
+    var = create_variable(nco, 'str_var', Measurement.variable_args(dtype, None, ('greg', ), None))
     var[:] = netcdfy_data(data)
     nco.close()
 
@@ -131,8 +131,8 @@ def test_chunksizes(tmpnetcdf_filename):
     coord1 = create_coordinate(nco, 'greg', Coordinate(numpy.dtype('int'), 0, 0, 3, 'cubic gregs'))
     coord2 = create_coordinate(nco, 'bleh', Coordinate(numpy.dtype('int'), 0, 0, 5, 'metric blehs'))
 
-    no_chunks = create_variable(nco, 'no_chunks', Variable(numpy.dtype(int), None, ('greg', 'bleh'), None))
-    min_max_chunks = create_variable(nco, 'min_max_chunks', Variable(numpy.dtype(int), None, ('greg', 'bleh'), None),
+    no_chunks = create_variable(nco, 'no_chunks', Measurement.variable_args(numpy.dtype(int), None, ('greg', 'bleh'), None))
+    min_max_chunks = create_variable(nco, 'min_max_chunks', Measurement.variable_args(numpy.dtype(int), None, ('greg', 'bleh'), None),
                                      chunksizes=[2, 50])
     nco.close()
 

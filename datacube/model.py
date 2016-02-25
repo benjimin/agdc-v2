@@ -132,6 +132,12 @@ class Measurement(object):
 
         return masks, meanings
 
+    def __eq__(self, other):
+        return self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return self.__dict__ != other.__dict__
+
     def __repr__(self):
         return "{}(name={!r}, settings={!r}, chunking={!r}".format(
             self.__class__.__name__, self.name, self.settings, self.chunking

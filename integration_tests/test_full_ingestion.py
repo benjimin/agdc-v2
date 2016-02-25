@@ -84,7 +84,7 @@ def test_full_ingestion(global_integration_cli_args, index, example_ls5_dataset)
             check_cf_compliance(nco)
             check_dataset_metadata_in_storage_unit(nco, example_ls5_dataset)
             check_global_attributes(nco, su.storage_type.global_attributes)
-        check_open_with_xray(su.local_path)
+        check_open_with_xarray(su.local_path)
     check_open_with_api(index)
 
 
@@ -142,7 +142,7 @@ def check_dataset_metadata_in_storage_unit(nco, dataset_dir):
     assert stored == original
 
 
-def check_open_with_xray(file_path):
+def check_open_with_xarray(file_path):
     import xarray
     xarray.open_dataset(str(file_path))
 
