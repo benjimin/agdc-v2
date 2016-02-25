@@ -63,7 +63,7 @@ def create_coordinate(nco, name, coord):
     """
     nco.createDimension(name, coord.length)
     var = nco.createVariable(name, coord.dtype, name)
-    var.units = coord.units
+    var.units = str(coord.units)
     for key, value in _STANDARD_COORDINATES.get(name, {}).items():
         setattr(var, key, value)
     return var
@@ -97,7 +97,7 @@ def create_variable(nco, name, var, **kwargs):
                                       **kwargs)
         data_var.grid_mapping = 'crs'
     if var.units is not None:
-        data_var.units = var.units
+        data_var.units = str(var.units)
     data_var.set_auto_maskandscale(False)
     return data_var
 
