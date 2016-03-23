@@ -4,6 +4,7 @@ Create/store dataset data into storage units based on the provided storage mappi
 """
 from __future__ import absolute_import, division, print_function
 
+import uuid
 import logging
 from contextlib import contextmanager
 from datetime import datetime
@@ -22,7 +23,7 @@ import rasterio.warp
 from rasterio.warp import RESAMPLING
 
 from datacube import compat
-from datacube.model import StorageUnit, GeoBox, Variable, _uri_to_local_path, time_coordinate_value
+from datacube.model import StorageUnit, GeoPolygon, GeoBox, Variable, _uri_to_local_path, time_coordinate_value
 from datacube.storage import netcdf_writer
 from datacube.utils import namedtuples2dicts
 from datacube.storage.access.core import StorageUnitBase, StorageUnitDimensionProxy, StorageUnitStack
@@ -41,9 +42,46 @@ RESAMPLING_METHODS = {
 
 
 class WarpingStorageUnit(StorageUnitBase):
-    def __init__(self, datasets, geobox, mapping, fuse_func=None):
+    def __init__(self, datasets, geobox, mapping, product_info, fuse_func=None):
         if not datasets:
             raise ValueError('Shall not make empty StorageUnit')
+
+        left, bottom, right, top = geobox.extent.boundingbox
+        gp = GeoPolygon([(left, top), (right, top), (right, bottom), (left, bottom)],
+                        geobox.crs_str).to_crs('EPSG:4326')
+        self.document = {
+            'id': str(uuid.uuid4()),
+            # 'creation_dt':  str(aos),
+            'extent': {
+                # HACK: zzzzzz
+                'from_dt': str(datasets[0].time),
+                'to_dt': str(datasets[0].time),
+                'center_dt': str(datasets[0].time),
+                'coord': {
+                    'ul': {'lon': gp.points[0][0], 'lat': gp.points[0][1]},
+                    'ur': {'lon': gp.points[1][0], 'lat': gp.points[1][1]},
+                    'lr': {'lon': gp.points[2][0], 'lat': gp.points[2][1]},
+                    'll': {'lon': gp.points[3][0], 'lat': gp.points[3][1]},
+                }
+            },
+            'format': {'name': 'NETCDF'},
+            'grid_spatial': {
+                'projection': {
+                    'spatial_reference': geobox.crs_str,
+                    'geo_ref_points': {
+                        'ul': {'x': left, 'y': top},
+                        'ur': {'x': right, 'y': top},
+                        'll': {'x': left, 'y': bottom},
+                        'lr': {'x': right, 'y': bottom},
+                    }
+                }
+            },
+            # 'image': {
+            #    'bands': images
+            # },
+            'lineage': {'source_datasets': {dataset.id: dataset.metadata_doc for dataset in datasets}}
+        }
+        self.document.update(product_info)
 
         self._datasets = datasets
         self.geobox = geobox
@@ -80,7 +118,7 @@ class WarpingStorageUnit(StorageUnitBase):
 
     def _fill_data(self, name, index, dest):
         if name == 'extra_metadata':
-            docs = yaml.dump_all([doc.metadata_doc for doc in self._datasets], Dumper=SafeDumper, encoding='utf-8')
+            docs = yaml.dump(self.document, Dumper=SafeDumper, encoding='utf-8')
             numpy.copyto(dest, docs)
         else:
             src_variable_name = self._varmap[name]
@@ -177,7 +215,9 @@ def create_storage_unit_from_datasets(tile_index, datasets, storage_type, output
     geobox = GeoBox.from_storage_type(storage_type, tile_index)
 
     storage_units = [StorageUnitDimensionProxy(
-        WarpingStorageUnit(group, geobox, mapping=storage_type.measurements),
+        WarpingStorageUnit(group, geobox,
+                           mapping=storage_type.measurements,
+                           product_info=storage_type.document['match']['metadata']),
         time_coordinate_value(time))
                      for time, group in datasets_grouped_by_time]
     access_unit = StorageUnitStack(storage_units=storage_units, stack_dim='time')
