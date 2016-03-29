@@ -22,7 +22,9 @@ _DEFAULT_COLLECTIONS_PATH = Path(__file__).parent.joinpath('default-collections.
 def connect(local_config=LocalConfig.find()):
     """
     Connect to the index. Default Postgres implementation.
-    :type local_config: datacube.config.LocalConfig
+
+    :param local_config: Config object to use.
+    :type local_config: :py:class:`datacube.config.LocalConfig`, optional
     :rtype: Index
     """
     return Index(
@@ -53,3 +55,6 @@ class Index(object):
                 self.collections.add(doc)
 
         return is_new
+
+    def __repr__(self):
+        return "Index<db={!r}>".format(self._db)
