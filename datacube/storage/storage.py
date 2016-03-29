@@ -221,6 +221,7 @@ def create_storage_unit_from_datasets(tile_index, datasets, storage_type, output
                            product_info=storage_type.document['match']['metadata']),
         time_coordinate_value(time))
                      for time, group in datasets_grouped_by_time]
+    documents = [storage_unit.document for storage_unit in storage_units]
     access_unit = StorageUnitStack(storage_units=storage_units, stack_dim='time')
 
     local_filename = _uri_to_local_path(output_uri)
@@ -234,11 +235,11 @@ def create_storage_unit_from_datasets(tile_index, datasets, storage_type, output
     descriptor = _accesss_unit_descriptor(access_unit, tile_index=tile_index)
 
     size_bytes = local_filename.stat().st_size
-    return StorageUnit([dataset.id for dataset in datasets],
+    return StorageUnit([document['id'] for document in documents],
                        storage_type,
                        descriptor,
                        size_bytes=size_bytes,
-                       output_uri=output_uri)
+                       output_uri=output_uri), documents
 
 
 def storage_unit_to_access_unit(storage_unit):

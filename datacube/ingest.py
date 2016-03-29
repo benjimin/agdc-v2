@@ -59,7 +59,11 @@ def store_datasets(datasets, index=None, executor=SerialExecutor()):
         _LOG.info('Storing %s dataset(s) using %s', len(datasets), storage_type)
         storage_units += create_storage_units(datasets, storage_type, executor=executor)
 
-    index.storage.add_many(executor.result(value) for value in storage_units)
+    for value in storage_units:
+        storage_unit, datasets = executor.result(value)
+        for dataset in datasets:
+            index.datasets.add(dataset, storage_unit.local_path)
+        index.storage.add(storage_unit)
 
 
 def find_storage_types_for_datasets(datasets, index=None):

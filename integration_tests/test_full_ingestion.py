@@ -89,9 +89,8 @@ def test_full_ingestion(global_integration_cli_args, index, example_ls5_dataset)
 
 
 def ensure_dataset_is_indexed(index):
-    datasets = index.datasets.search_eager()
-    assert len(datasets) == 1
-    assert datasets[0].id == EXAMPLE_LS5_DATASET_ID
+    datasets = index.datasets.search()
+    assert any(dataset.id == EXAMPLE_LS5_DATASET_ID for dataset in datasets)
 
 
 def check_grid_mapping(nco):
